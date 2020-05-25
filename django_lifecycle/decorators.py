@@ -1,3 +1,4 @@
+from collections import Iterable
 from functools import wraps
 from typing import List
 
@@ -30,7 +31,7 @@ def _validate_hook_params(hook, when, when_any, has_changed):
             "matching the names of model fields"
         )
 
-        if not isinstance(when_any, list):
+        if not isinstance(when_any, Iterable):
             raise DjangoLifeCycleException(when_any_error_msg)
 
         if len(when_any) == 0:
