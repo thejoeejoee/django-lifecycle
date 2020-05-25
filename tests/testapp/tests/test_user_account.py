@@ -3,7 +3,7 @@ import datetime
 from django.core import mail
 from django.test import TestCase
 
-from tests.testapp.models import CannotDeleteActiveTrial, Organization, UserAccount
+from tests.testapp.models import CannotDeleteActiveTrial, Organization, UserAccount, CannotDeleteBoomer
 
 
 class UserAccountTestCase(TestCase):
@@ -119,3 +119,62 @@ class UserAccountTestCase(TestCase):
         account.save(skip_hooks=True)
         self.assertEqual(account.email, "Homer.Simpson@springfieldnuclear")
 
+    def test_email_deactivated_user_after_update(self):
+        account = UserAccount.objects.create(status="active", **self.stub_data)
+        account.refresh_from_db()
+        mail.outbox = []
+        account.status = "disabled"
+        account.save()
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, "You can not log in")
+
+    def test_email_activated_user_after_update(self):
+        account = UserAccount.objects.create(status="disabled", **self.stub_data)
+        account.refresh_from_db()
+        mail.outbox = []
+        account.status = "active"
+        account.save()
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, "You can log in")
+
+    def test_email_long_password_after_save(self):
+        account = UserAccount.objects.create(**self.stub_data)
+        account.refresh_from_db()
+        mail.outbox = []
+        account.password = "very_long_but_not_secure_password"
+        account.save()
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, "Congratulations for long password")
+
+    def test_email_short_password_after_update(self):
+        account = UserAccount.objects.create(**self.stub_data)
+        account.refresh_from_db()
+        mail.outbox = []
+        account.password = "HM"
+        account.save()
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, "Bad, very bad change of your password you made")
+
+    def test_ensure_not_delete_boomer(self):
+        account = UserAccount.objects.create(**self.stub_data)
+        account.joined_at = datetime.datetime(1980, 1, 1)
+        account.save()
+        self.assertRaises(CannotDeleteBoomer, account.delete)
+
+    def test_email_about_young_account_deletion_after_delete(self):
+        account = UserAccount.objects.create(joined_at=datetime.datetime(2018, 1, 1), **self.stub_data)
+        account.refresh_from_db()
+        mail.outbox = []
+        account.delete()
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, "Young account deleted")
+
+    def test_email_congratulation_to_elon_after_create(self):
+        account = UserAccount.objects.create(**self.stub_data)
+        account.refresh_from_db()
+        mail.outbox = []
+        account.username = 'elon.musk'
+        account.password = 'falcon9'
+        account.save()
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, "Welcome, Elon!")

@@ -347,3 +347,38 @@ class LifecycleMixinTests(TestCase):
         self.assertTrue(account.has_changed("first_name"))
         account.save()
         self.assertFalse(account.has_changed("first_name"))
+
+    def test_is_now_callable_condition(self):
+        specs = {"when": "first_name", "is_now": lambda v: v == 'Ned'}
+
+        data = self.stub_data
+        data["first_name"] = "Ned"
+        UserAccount.objects.create(**data)
+        user_account = UserAccount.objects.get()
+        self.assertTrue(user_account._check_is_now_condition("first_name", specs))
+
+    def test_is_not_callable_condition(self):
+        specs = {"when": "first_name", "is_not": lambda v: v == 'Ned'}
+
+        data = self.stub_data
+        UserAccount.objects.create(**data)
+        user_account = UserAccount.objects.get()
+        self.assertFalse(user_account._check_is_not_condition("first_name", specs))
+
+    def test_was_callable_condition(self):
+        specs = {"when": "first_name", "was": lambda v: v == 'Homer'}
+
+        data = self.stub_data
+        data["first_name"] = "Ned"
+        UserAccount.objects.create(**data)
+        user_account = UserAccount.objects.get()
+        self.assertTrue(user_account._check_was_condition("first_name", specs))
+
+    def test_was_not_callable_condition(self):
+        specs = {"when": "first_name", "was_not": lambda v: v == 'Homer'}
+
+        data = self.stub_data
+        data["first_name"] = "Ned"
+        UserAccount.objects.create(**data)
+        user_account = UserAccount.objects.get()
+        self.assertFalse(user_account._check_was_not_condition("first_name", specs))

@@ -1,16 +1,21 @@
 import uuid
+from datetime import datetime
 
-from django.utils import timezone
+import urlman
 from django.core import mail
 from django.db import models
+from django.utils import timezone
 from django.utils.functional import cached_property
+
 from django_lifecycle import hook
 from django_lifecycle.models import LifecycleModel
 
-import urlman
-
 
 class CannotDeleteActiveTrial(Exception):
+    pass
+
+
+class CannotDeleteBoomer(Exception):
     pass
 
 
@@ -36,7 +41,7 @@ class UserAccount(LifecycleModel):
     status = models.CharField(
         default="active",
         max_length=30,
-        choices=(("active", "Active"), ("banned", "Banned"), ("inactive", "Inactive")),
+        choices=(("active", "Active"), ("banned", "Banned"), ("inactive", "Inactive"), ("disabled", "Disabled")),
     )
 
     class urls(urlman.Urls):
@@ -115,6 +120,64 @@ class UserAccount(LifecycleModel):
         mail.send_mail(
             "Update",
             "You changed your first name or your last name",
+            "from@example.com",
+            ["to@example.com"],
+        )
+
+    @hook("after_update", when="status", was="active", is_now=lambda v: v in ('banned', 'disabled'))
+    def email_deactivated_user(self):
+        mail.send_mail(
+            "You can not log in",
+            "From now you can not log in.",
+            "from@example.com",
+            ["to@example.com"],
+        )
+
+    @hook("after_update", when="status", was=lambda v: v in ('banned', 'disabled'), is_now='active')
+    def email_activated_user(self):
+        mail.send_mail(
+            "You can log in",
+            "From now you can log in.",
+            "from@example.com",
+            ["to@example.com"],
+        )
+
+    @hook("after_save", when="password", is_now=lambda v: len(v) > 10)
+    def email_user_long_password(self):
+        mail.send_mail(
+            "Congratulations for long password",
+            "You have really long password now!",
+            "from@example.com",
+            ["to@example.com"],
+        )
+
+    @hook("after_update", when="password", was=lambda v: len(v) > 5, is_now=lambda v: len(v) < 3)
+    def email_user_got_worse_password(self):
+        mail.send_mail(
+            "Bad, very bad change of your password you made",
+            "Bad, very bad",
+            "from@example.com",
+            ["to@example.com"],
+        )
+
+    @hook("before_delete", when="joined_at", is_now=lambda v: v < datetime(1989, 12, 17))
+    def restrict_delete_boomer_account(self):
+        raise CannotDeleteBoomer
+
+    @hook("after_delete", when="joined_at", is_not=lambda v: v > datetime(2015, 1, 1))
+    def email_about_young_account_deletion(self):
+        mail.send_mail(
+            "Young account deleted",
+            "Sorry, but that was really young account.",
+            "from@example.com",
+            ["to@example.com"],
+        )
+
+    @hook("after_update", when="username", is_now=lambda u: u == 'elon.musk')
+    def email_congratulation_to_elon(self):
+        mail.send_mail(
+            "Welcome, Elon!",
+            "Welcome to the test cases!",
             "from@example.com",
             ["to@example.com"],
         )
