@@ -1,7 +1,6 @@
-import datetime
-
 from django.core import mail
 from django.test import TestCase
+from django.utils.timezone import make_aware, datetime
 
 from tests.testapp.models import CannotDeleteActiveTrial, Organization, UserAccount, CannotDeleteBoomer
 
@@ -19,7 +18,7 @@ class UserAccountTestCase(TestCase):
     def test_update_joined_at_before_create(self):
         account = UserAccount.objects.create(**self.stub_data)
         account.refresh_from_db()
-        self.assertTrue(isinstance(account.joined_at, datetime.datetime))
+        self.assertTrue(isinstance(account.joined_at, datetime))
 
     def test_send_welcome_email_after_create(self):
         account = UserAccount.objects.create(**self.stub_data)
@@ -41,7 +40,7 @@ class UserAccountTestCase(TestCase):
         account.save()
         account.refresh_from_db()
 
-        self.assertTrue(isinstance(account.password_updated_at, datetime.datetime))
+        self.assertTrue(isinstance(account.password_updated_at, datetime))
 
     def test_ensure_trial_not_active_before_delete(self):
         account = UserAccount.objects.create(**self.stub_data)
@@ -52,6 +51,7 @@ class UserAccountTestCase(TestCase):
     def test_email_after_delete(self):
         account = UserAccount.objects.create(**self.stub_data)
         mail.outbox = []
+        account.joined_at = make_aware(datetime(2000, 1, 1))
         account.delete()
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].subject, "We have deleted your account")
@@ -157,17 +157,22 @@ class UserAccountTestCase(TestCase):
 
     def test_ensure_not_delete_boomer(self):
         account = UserAccount.objects.create(**self.stub_data)
-        account.joined_at = datetime.datetime(1980, 1, 1)
+        account.joined_at = make_aware(datetime(1980, 1, 1))
         account.save()
         self.assertRaises(CannotDeleteBoomer, account.delete)
 
     def test_email_about_young_account_deletion_after_delete(self):
-        account = UserAccount.objects.create(joined_at=datetime.datetime(2018, 1, 1), **self.stub_data)
+        account = UserAccount.objects.create(**self.stub_data)
         account.refresh_from_db()
+        account.joined_at = make_aware(datetime(2018, 1, 1))
+        account.save()
         mail.outbox = []
         account.delete()
-        self.assertEqual(len(mail.outbox), 1)
-        self.assertEqual(mail.outbox[0].subject, "Young account deleted")
+        self.assertEqual(len(mail.outbox), 2)
+        self.assertEqual(
+            {mail.outbox[0].subject, mail.outbox[1].subject},
+            {"Young account deleted", "We have deleted your account"}
+        )
 
     def test_email_congratulation_to_elon_after_create(self):
         account = UserAccount.objects.create(**self.stub_data)

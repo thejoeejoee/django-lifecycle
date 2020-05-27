@@ -238,18 +238,24 @@ class LifecycleModelMixin(object):
         return has_changed == self.has_changed(field_name)
 
     def _check_is_now_condition(self, field_name: str, specs: dict) -> bool:
-        return specs["is_now"] in (self._current_value(field_name), "*")
+        is_now = specs["is_now"]
+        current_value = self._current_value(field_name)
+        return is_now(current_value) if callable(is_now) else is_now in (current_value, "*")
 
     def _check_is_not_condition(self, field_name: str, specs: dict) -> bool:
         is_not = specs["is_not"]
-        return is_not is NotSet or self._current_value(field_name) != is_not
+        value = self._current_value(field_name)
+        return is_not is NotSet or (is_not(value) if callable(is_not) else value != is_not)
 
     def _check_was_condition(self, field_name: str, specs: dict) -> bool:
-        return specs["was"] in (self.initial_value(field_name), "*")
+        was = specs["was"]
+        value = self.initial_value(field_name)
+        return was(value) if callable(was) else was in (value, "*")
 
     def _check_was_not_condition(self, field_name: str, specs: dict) -> bool:
         was_not = specs["was_not"]
-        return was_not is NotSet or self.initial_value(field_name) != was_not
+        value = self.initial_value(field_name)
+        return was_not is NotSet or (was_not(value) if callable(was_not) else value != was_not)
 
     def _check_changes_to_condition(self, field_name: str, specs: dict) -> bool:
         changes_to = specs["changes_to"]

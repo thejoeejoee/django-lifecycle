@@ -366,7 +366,7 @@ class LifecycleMixinTests(TestCase):
         self.assertFalse(user_account._check_is_not_condition("first_name", specs))
 
     def test_was_callable_condition(self):
-        specs = {"when": "first_name", "was": lambda v: v == 'Homer'}
+        specs = {"when": "first_name", "was": lambda v: v == 'Ned'}
 
         data = self.stub_data
         data["first_name"] = "Ned"

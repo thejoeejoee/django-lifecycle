@@ -1,11 +1,12 @@
 import uuid
-from datetime import datetime
 
 import urlman
 from django.core import mail
 from django.db import models
 from django.utils import timezone
+from django.utils.datetime_safe import datetime
 from django.utils.functional import cached_property
+from django.utils.timezone import make_aware
 
 from django_lifecycle import hook
 from django_lifecycle.models import LifecycleModel
@@ -160,11 +161,11 @@ class UserAccount(LifecycleModel):
             ["to@example.com"],
         )
 
-    @hook("before_delete", when="joined_at", is_now=lambda v: v < datetime(1989, 12, 17))
+    @hook("before_delete", when="joined_at", is_now=lambda v: v < make_aware(datetime(1989, 12, 17)))
     def restrict_delete_boomer_account(self):
         raise CannotDeleteBoomer
 
-    @hook("after_delete", when="joined_at", is_not=lambda v: v > datetime(2015, 1, 1))
+    @hook("after_delete", when="joined_at", is_not=lambda v: v > make_aware(datetime(2005, 1, 1)))
     def email_about_young_account_deletion(self):
         mail.send_mail(
             "Young account deleted",

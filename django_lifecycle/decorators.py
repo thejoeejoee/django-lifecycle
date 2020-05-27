@@ -2,8 +2,7 @@ from collections import Iterable
 from functools import wraps
 from typing import List
 
-from django_lifecycle import NotSet
-
+from . import NotSet, Condition
 from .hooks import VALID_HOOKS
 
 
@@ -50,15 +49,15 @@ def _validate_hook_params(hook, when, when_any, has_changed):
 
 
 def hook(
-    hook: str,
-    when: str = None,
-    when_any: List[str] = None,
-    was="*",
-    is_now="*",
-    has_changed: bool = None,
-    is_not=NotSet,
-    was_not=NotSet,
-    changes_to=NotSet,
+        hook: str,
+        when: str = None,
+        when_any: List[str] = None,
+        was: Condition = "*",
+        is_now: Condition = "*",
+        has_changed: bool = None,
+        is_not: Condition = NotSet,
+        was_not: Condition = NotSet,
+        changes_to=NotSet,
 ):
     _validate_hook_params(hook, when, when_any, has_changed)
 
