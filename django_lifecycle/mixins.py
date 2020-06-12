@@ -1,9 +1,10 @@
+from collections import defaultdict
 from functools import reduce
-from typing import Any, List
+from typing import Any, List, Dict
 
 from django.core.exceptions import FieldDoesNotExist, ObjectDoesNotExist
 
-from . import NotSet
+from . import NotSet, HookSpec
 from .decorators import HookedMethod
 from .hooks import (
     BEFORE_CREATE, BEFORE_UPDATE,
@@ -128,7 +129,7 @@ class LifecycleModelMixin(object):
         self._run_hooked_methods(AFTER_DELETE)
 
     @cached_class_property
-    def _potentially_hooked_methods(cls) -> List[HookedMethod]:
+    def _potentially_hooked_methods(cls) -> Dict[str, List[HookedMethod]]:
         skip = set(get_unhookable_attribute_names(cls))
 
         # really important to skip _potentially_hooked_methods to avoid recursion
@@ -137,14 +138,13 @@ class LifecycleModelMixin(object):
         # collect all possible hooked attrs from class
         possible_names = set(dir(cls))
 
-        collected = []
+        collected = defaultdict(list)
         for name in possible_names - skip:
-            try:
-                attr = getattr(cls, name)
-                if isinstance(attr, HookedMethod):
-                    collected.append(attr)
-            except AttributeError:
-                pass
+            attr = getattr(cls, name)
+            if isinstance(attr, HookedMethod):
+
+                for hook_spec in attr.specs:
+                    collected[hook_spec.hook_name].append(attr)
 
         return collected
 
@@ -157,10 +157,12 @@ class LifecycleModelMixin(object):
         """
         watched = []  # List[str]
 
-        for method in cls._potentially_hooked_methods:
-            for specs in method._hooked:
-                if specs["when"] is not None and "." in specs["when"]:
-                    watched.append(specs["when"])
+        # iter through all hooked methods
+        for method in (m for methods in cls._potentially_hooked_methods.values() for m in methods):
+
+            for spec in method.specs:  # type: HookSpec
+                if spec.when is not None and "." in spec.when:
+                    watched.append(spec.when)
 
         return watched
 
@@ -168,7 +170,7 @@ class LifecycleModelMixin(object):
     def _watched_fk_models(cls) -> List[str]:
         return [_.split(".")[0] for _ in cls._watched_fk_model_fields]
 
-    def _run_hooked_methods(self, hook: str) -> List[str]:
+    def _run_hooked_methods(self, hook_name: str) -> List[str]:
         """
             Iterate through decorated methods to find those that should be
             triggered by the current hook. If conditions exist, check them before
@@ -176,21 +178,20 @@ class LifecycleModelMixin(object):
         """
         fired = []
 
-        for method in self._potentially_hooked_methods:  # type: HookedMethod
-            for callback_specs in method._hooked:
-                if callback_specs["hook"] != hook:
-                    continue
+        for method in self._potentially_hooked_methods.get(hook_name, []):  # type: HookedMethod
+            for spec in method.specs:
 
-                when_field = callback_specs.get("when")
-                when_any_field = callback_specs.get("when_any")
+                when_field = spec.when
+                when_any_field = spec.when_any
 
                 if when_field:
-                    if self._check_callback_conditions(when_field, callback_specs):
+                    if self._check_callback_conditions(when_field, spec):
                         fired.append(method.__name__)
                         method(self)
+
                 elif when_any_field:
                     for field_name in when_any_field:
-                        if self._check_callback_conditions(field_name, callback_specs):
+                        if self._check_callback_conditions(field_name, spec):
                             fired.append(method.__name__)
                             method(self)
                 else:
@@ -199,51 +200,51 @@ class LifecycleModelMixin(object):
 
         return fired
 
-    def _check_callback_conditions(self, field_name: str, specs: dict) -> bool:
-        if not self._check_has_changed(field_name, specs):
+    def _check_callback_conditions(self, field_name: str, spec: HookSpec) -> bool:
+        if not self._check_has_changed(field_name, spec):
             return False
 
-        if not self._check_is_now_condition(field_name, specs):
+        if not self._check_is_now_condition(field_name, spec):
             return False
 
-        if not self._check_was_condition(field_name, specs):
+        if not self._check_was_condition(field_name, spec):
             return False
 
-        if not self._check_was_not_condition(field_name, specs):
+        if not self._check_was_not_condition(field_name, spec):
             return False
 
-        if not self._check_is_not_condition(field_name, specs):
+        if not self._check_is_not_condition(field_name, spec):
             return False
 
-        if not self._check_changes_to_condition(field_name, specs):
+        if not self._check_changes_to_condition(field_name, spec):
             return False
 
         return True
 
-    def _check_has_changed(self, field_name: str, specs: dict) -> bool:
-        has_changed = specs["has_changed"]
+    def _check_has_changed(self, field_name: str, spec: HookSpec) -> bool:
+        has_changed = spec.has_changed
 
         if has_changed is None:
             return True
 
         return has_changed == self.has_changed(field_name)
 
-    def _check_is_now_condition(self, field_name: str, specs: dict) -> bool:
-        return specs["is_now"] in (self._current_value(field_name), "*")
+    def _check_is_now_condition(self, field_name: str, spec: HookSpec) -> bool:
+        return spec.is_now in (self._current_value(field_name), "*")
 
-    def _check_is_not_condition(self, field_name: str, specs: dict) -> bool:
-        is_not = specs["is_not"]
+    def _check_is_not_condition(self, field_name: str, spec: HookSpec) -> bool:
+        is_not = spec.is_not
         return is_not is NotSet or self._current_value(field_name) != is_not
 
-    def _check_was_condition(self, field_name: str, specs: dict) -> bool:
-        return specs["was"] in (self.initial_value(field_name), "*")
+    def _check_was_condition(self, field_name: str, spec: HookSpec) -> bool:
+        return spec.was in (self.initial_value(field_name), "*")
 
-    def _check_was_not_condition(self, field_name: str, specs: dict) -> bool:
-        was_not = specs["was_not"]
+    def _check_was_not_condition(self, field_name: str, spec: HookSpec) -> bool:
+        was_not = spec.was_not
         return was_not is NotSet or self.initial_value(field_name) != was_not
 
-    def _check_changes_to_condition(self, field_name: str, specs: dict) -> bool:
-        changes_to = specs["changes_to"]
+    def _check_changes_to_condition(self, field_name: str, spec: HookSpec) -> bool:
+        changes_to = spec.changes_to
         return any([
             changes_to is NotSet,
             (self.initial_value(field_name) != changes_to and self._current_value(field_name) == changes_to)

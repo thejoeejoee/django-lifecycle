@@ -2,8 +2,15 @@ from unittest.mock import MagicMock
 
 from django.test import TestCase
 
-from django_lifecycle import NotSet
+from django_lifecycle import NotSet, HookSpec as OriginalHookSpec
 from tests.testapp.models import CannotRename, Organization, UserAccount
+
+
+class HookSpec(OriginalHookSpec):
+    def __new__(cls, *args, **kwargs):
+        # hook_name is mandatory argument for production usage, in tests for conditions is unused
+        kwargs.setdefault('hook_name', 'mocked')
+        return super().__new__(cls, *args, **kwargs)
 
 
 class LifecycleMixinTests(TestCase):
@@ -92,12 +99,12 @@ class LifecycleMixinTests(TestCase):
     def test_run_hooked_methods_for_when(self):
         instance = UserAccount(first_name="Bob")
 
-        instance._potentially_hooked_methods = [
+        instance._potentially_hooked_methods = dict(after_create=[
             MagicMock(
                 __name__="method_that_does_fires",
-                _hooked=[
-                    {
-                        "hook": "after_create",
+                specs=[
+                    HookSpec(**{
+                        "hook_name": "after_create",
                         "when": "first_name",
                         "when_any": None,
                         "has_changed": None,
@@ -106,14 +113,14 @@ class LifecycleMixinTests(TestCase):
                         "was": "*",
                         "was_not": NotSet,
                         "changes_to": NotSet,
-                    }
+                    })
                 ],
             ),
             MagicMock(
                 __name__="method_that_does_not_fire",
-                _hooked=[
-                    {
-                        "hook": "after_create",
+                specs=[
+                    HookSpec(**{
+                        "hook_name": "after_create",
                         "when": "first_name",
                         "when_any": None,
                         "has_changed": None,
@@ -122,22 +129,22 @@ class LifecycleMixinTests(TestCase):
                         "was": "*",
                         "was_not": NotSet,
                         "changes_to": NotSet,
-                    }
+                    })
                 ],
             ),
-        ]
+        ])
         fired_methods = instance._run_hooked_methods("after_create")
         self.assertEqual(fired_methods, ["method_that_does_fires"])
 
     def test_run_hooked_methods_for_when_any(self):
         instance = UserAccount(first_name="Bob")
 
-        instance._potentially_hooked_methods = [
+        instance._potentially_hooked_methods = dict(after_create=[
             MagicMock(
                 __name__="method_that_does_fires",
-                _hooked=[
-                    {
-                        "hook": "after_create",
+                specs=[
+                    HookSpec(**{
+                        "hook_name": "after_create",
                         "when": None,
                         "when_any": ["first_name", "last_name", "password"],
                         "has_changed": None,
@@ -146,14 +153,14 @@ class LifecycleMixinTests(TestCase):
                         "was": "*",
                         "was_not": NotSet,
                         "changes_to": NotSet,
-                    }
+                    })
                 ],
             ),
             MagicMock(
                 __name__="method_that_does_not_fire",
-                _hooked=[
-                    {
-                        "hook": "after_create",
+                specs=[
+                    HookSpec(**{
+                        "hook_name": "after_create",
                         "when": "first_name",
                         "when_any": None,
                         "has_changed": None,
@@ -162,10 +169,10 @@ class LifecycleMixinTests(TestCase):
                         "was": "*",
                         "was_not": NotSet,
                         "changes_to": NotSet,
-                    }
+                    })
                 ],
             ),
-        ]
+        ])
         fired_methods = instance._run_hooked_methods("after_create")
         self.assertEqual(fired_methods, ["method_that_does_fires"])
 
@@ -196,7 +203,7 @@ class LifecycleMixinTests(TestCase):
         self.assertFalse(user_account.has_changed("organization.name"))
 
     def test_has_changed_specs(self):
-        specs = {"when": "first_name", "has_changed": True}
+        specs = HookSpec(**{"when": "first_name", "has_changed": True})
 
         data = self.stub_data
         data["first_name"] = "Homer"
@@ -208,7 +215,7 @@ class LifecycleMixinTests(TestCase):
         self.assertTrue(user_account._check_has_changed("first_name", specs))
 
     def test_check_is_now_condition_wildcard_should_pass(self):
-        specs = {"when": "first_name", "is_now": "*"}
+        specs = HookSpec(**{"when": "first_name", "is_now": "*"})
         data = self.stub_data
         data["first_name"] = "Homer"
         UserAccount.objects.create(**data)
@@ -217,7 +224,7 @@ class LifecycleMixinTests(TestCase):
         self.assertTrue(user_account._check_is_now_condition("first_name", specs))
 
     def test_check_is_now_condition_matching_value_should_pass(self):
-        specs = {"when": "first_name", "is_now": "Ned"}
+        specs = HookSpec(**{"when": "first_name", "is_now": "Ned"})
         data = self.stub_data
         data["first_name"] = "Homer"
         UserAccount.objects.create(**data)
@@ -226,7 +233,7 @@ class LifecycleMixinTests(TestCase):
         self.assertTrue(user_account._check_is_now_condition("first_name", specs))
 
     def test_check_is_now_condition_not_matched_value_should_not_pass(self):
-        specs = {"when": "first_name", "is_now": "Bart"}
+        specs = HookSpec(**{"when": "first_name", "is_now": "Bart"})
         data = self.stub_data
         data["first_name"] = "Homer"
         UserAccount.objects.create(**data)
@@ -234,14 +241,14 @@ class LifecycleMixinTests(TestCase):
         self.assertFalse(user_account._check_is_now_condition("first_name", specs))
 
     def test_check_was_not_condition_should_pass_when_not_set(self):
-        specs = {"when": "first_name", "was_not": NotSet}
+        specs = HookSpec(**{"when": "first_name", "was_not": NotSet})
         data = self.stub_data
         UserAccount.objects.create(**data)
         user_account = UserAccount.objects.get()
         self.assertTrue(user_account._check_was_not_condition("first_name", specs))
 
     def test_check_was_not_condition_not_matching_value_should_pass(self):
-        specs = {"when": "first_name", "was_not": "Bart"}
+        specs = HookSpec(**{"when": "first_name", "was_not": "Bart"})
 
         data = self.stub_data
         data["first_name"] = "Homer"
@@ -250,7 +257,7 @@ class LifecycleMixinTests(TestCase):
         self.assertTrue(user_account._check_was_not_condition("first_name", specs))
 
     def test_check_was_not_condition_matched_value_should_not_pass(self):
-        specs = {"when": "first_name", "was_not": "Homer"}
+        specs = HookSpec(**{"when": "first_name", "was_not": "Homer"})
 
         data = self.stub_data
         data["first_name"] = "Homer"
@@ -259,7 +266,7 @@ class LifecycleMixinTests(TestCase):
         self.assertFalse(user_account._check_was_not_condition("first_name", specs))
 
     def test_check_was_condition_wildcard_should_pass(self):
-        specs = {"when": "first_name", "was": "*"}
+        specs = HookSpec(**{"when": "first_name", "was": "*"})
 
         data = self.stub_data
         data["first_name"] = "Homer"
@@ -268,7 +275,7 @@ class LifecycleMixinTests(TestCase):
         self.assertTrue(user_account._check_was_condition("first_name", specs))
 
     def test_check_was_condition_matching_value_should_pass(self):
-        specs = {"when": "first_name", "was": "Homer"}
+        specs = HookSpec(**{"when": "first_name", "was": "Homer"})
 
         data = self.stub_data
         data["first_name"] = "Homer"
@@ -277,7 +284,7 @@ class LifecycleMixinTests(TestCase):
         self.assertTrue(user_account._check_was_condition("first_name", specs))
 
     def test_check_was_condition_not_matched_value_should_not_pass(self):
-        specs = {"when": "first_name", "was": "Bart"}
+        specs = HookSpec(**{"when": "first_name", "was": "Bart"})
 
         data = self.stub_data
         data["first_name"] = "Homer"
@@ -286,7 +293,7 @@ class LifecycleMixinTests(TestCase):
         self.assertFalse(user_account._check_was_condition("first_name", specs))
 
     def test_is_not_condition_should_pass(self):
-        specs = {"when": "first_name", "is_not": "Ned"}
+        specs = HookSpec(**{"when": "first_name", "is_not": "Ned"})
 
         data = self.stub_data
         data["first_name"] = "Homer"
@@ -295,7 +302,7 @@ class LifecycleMixinTests(TestCase):
         self.assertTrue(user_account._check_is_not_condition("first_name", specs))
 
     def test_is_not_condition_should_not_pass(self):
-        specs = {"when": "first_name", "is_not": "Ned"}
+        specs = HookSpec(**{"when": "first_name", "is_not": "Ned"})
 
         data = self.stub_data
         data["first_name"] = "Ned"
@@ -304,8 +311,6 @@ class LifecycleMixinTests(TestCase):
         self.assertFalse(user_account._check_is_not_condition("first_name", specs))
 
     def test_changes_to_condition_should_pass(self):
-        specs = {"when": "last_name", "changes_to": "Flanders"}
-
         data = self.stub_data
         UserAccount.objects.create(**data)
         user_account = UserAccount.objects.get()
@@ -314,8 +319,6 @@ class LifecycleMixinTests(TestCase):
             user_account.save()
 
     def test_changes_to_condition_should_not_pass(self):
-        specs = {"when": "last_name", "changes_to": "Bouvier"}
-
         data = self.stub_data
         data["first_name"] = "Marge"
         data["last_name"] = "Simpson"
